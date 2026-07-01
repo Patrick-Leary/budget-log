@@ -67,6 +67,36 @@
       </form>
     </section>
 
+    <!-- ANALYSIS TAB -->
+    <section id="view-analysis" class="view">
+      <div id="analysis-empty" class="hint-block hidden">
+        No sheet data yet — set the Apps Script URL and secret in Settings, then tap Refresh.
+      </div>
+      <div id="analysis-content">
+        <div class="stat-cards" id="stat-cards"></div>
+        <div class="analysis-block">
+          <h2>Last 6 months</h2>
+          <div class="chart-legend">
+            <span><i class="dot income-dot"></i>Income</span>
+            <span><i class="dot spend-dot"></i>Spend</span>
+            <span><i class="dot invest-dot"></i>Invest</span>
+          </div>
+          <div class="trend-chart" id="trend-chart"></div>
+        </div>
+        <div class="analysis-block">
+          <div class="block-head">
+            <h2>Categories</h2>
+            <select id="month-select"></select>
+          </div>
+          <div id="category-breakdown"></div>
+        </div>
+        <div class="refresh-row">
+          <button id="refresh-data" class="secondary-btn">Refresh data</button>
+          <span class="hint" id="last-fetched"></span>
+        </div>
+      </div>
+    </section>
+
     <!-- HISTORY TAB -->
     <section id="view-history" class="view">
       <div class="month-summary" id="month-summary"></div>
@@ -77,9 +107,12 @@
     <section id="view-settings" class="view">
       <div class="settings-block">
         <h2>Google Sheets Sync</h2>
-        <p class="hint">Paste your Apps Script web app URL. Entries sync automatically on save; unsynced entries retry with "Sync now".</p>
+        <p class="hint">Paste the Apps Script web app URL and the secret you set in the script. Entries sync on save; unsynced entries retry with "Sync now".</p>
+        <label for="script-url">Web app URL</label>
         <input type="url" id="script-url" placeholder="https://script.google.com/macros/s/.../exec">
-        <button id="save-url" class="secondary-btn">Save URL</button>
+        <label for="script-secret">Secret</label>
+        <input type="password" id="script-secret" placeholder="Same value as SECRET in the script">
+        <button id="save-sync" class="secondary-btn">Save</button>
         <div class="sync-status" id="sync-status"></div>
         <button id="sync-now" class="secondary-btn">Sync now</button>
       </div>
@@ -94,6 +127,7 @@
 
   <nav class="tabbar">
     <button data-view="log" class="active">➕ Log</button>
+    <button data-view="analysis">📊 Analysis</button>
     <button data-view="history">📋 History</button>
     <button data-view="settings">⚙️ Settings</button>
   </nav>

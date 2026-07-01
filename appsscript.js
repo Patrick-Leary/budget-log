@@ -1,13 +1,13 @@
 /**
- * Budget Log — Google Sheets sync endpoint.
+ * Budget Log — Google Sheets endpoint (write + read).
+ * See README.md for deployment steps.
  *
- * Setup: open your budget spreadsheet -> Extensions -> Apps Script,
- * paste this file, save, then Deploy -> New deployment -> Web app
- * (Execute as: Me, Who has access: Anyone). Paste the /exec URL into
- * Budget Log's Settings tab.
- *
- * Tab names must match your spreadsheet's transaction tabs.
+ * SECURITY: set SECRET to a long random string, and enter the same
+ * value in the app's Settings tab. All requests (read and write) are
+ * rejected without it. Leave '' only while testing.
  */
+
+const SECRET = '';
 
 const TABS = {
   spend: 'Spend',
@@ -15,11 +15,15 @@ const TABS = {
   invest: 'Invest',
 };
 
+// ---------- Write ----------
+
 function doPost(e) {
   const lock = LockService.getScriptLock();
   lock.waitLock(10000);
   try {
     const data = JSON.parse(e.postData.contents);
+    if (!checkSecret(data.secret)) return jsonOut({ ok: false, error: 'unauthorized' });
+
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     const saved = [];
 
@@ -47,8 +51,58 @@ function doPost(e) {
   }
 }
 
-function doGet() {
-  return jsonOut({ ok: true, service: 'budget-log' });
+// ---------- Read ----------
+
+function doGet(e) {
+  try {
+    if (!checkSecret(e.parameter.secret)) return jsonOut({ ok: false, error: 'unauthorized' });
+
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    return jsonOut({
+      ok: true,
+      spend: readTab(ss, TABS.spend, 5),
+      income: readTab(ss, TABS.income, 3),
+      invest: readTab(ss, TABS.invest, 3),
+    });
+  } catch (err) {
+    return jsonOut({ ok: false, error: String(err) });
+  }
+}
+
+/**
+ * Read the first `cols` columns of a tab, keeping only rows whose first
+ * cell is a date. Header rows, pivot tables, and blank rows fall out.
+ */
+function readTab(ss, name, cols) {
+  const sheet = ss.getSheetByName(name);
+  if (!sheet) return [];
+  const values = sheet.getDataRange().getValues();
+  const tz = Session.getScriptTimeZone();
+  const out = [];
+
+  values.forEach(function (row) {
+    const first = row[0];
+    let date = null;
+    if (first instanceof Date) {
+      date = Utilities.formatDate(first, tz, 'MM/dd/yyyy');
+    } else if (typeof first === 'string' && /^\d{1,2}\/\d{1,2}\/\d{4}$/.test(first.trim())) {
+      date = first.trim();
+    }
+    if (!date) return;
+    const rest = row.slice(1, cols).map(function (v) {
+      return v instanceof Date ? Utilities.formatDate(v, tz, 'MM/dd/yyyy') : v;
+    });
+    out.push([date].concat(rest));
+  });
+
+  return out;
+}
+
+// ---------- Helpers ----------
+
+function checkSecret(provided) {
+  if (SECRET === '') return true; // testing mode
+  return provided === SECRET;
 }
 
 function jsonOut(obj) {

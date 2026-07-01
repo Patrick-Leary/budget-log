@@ -1,29 +1,14 @@
-# 💸 Budget Log
+# Budget Log
 
-A mobile-first quick-entry budget logger — log a purchase in seconds from your phone, and every entry syncs to your own Google Sheet. Static site, no backend, no account, no third-party data access. Sibling project to [workout-log](https://github.com/Patrick-Leary/workout-log), built on the same architecture.
+Mobile quick-entry budget tracker. Log Spend / Income / Invest entries from your phone; everything syncs to a Google Sheet you own via a Google Apps Script you deploy yourself. Static site — no backend, no account, no data stored anywhere except your browser and your sheet.
 
 **Live app:** https://patrick-leary.github.io/budget-log
 
-> Your financial data never touches this repo or any server except your own Google Sheet. Entries are stored in your browser's `localStorage` and (optionally) pushed to a Google Apps Script endpoint that you deploy yourself.
+## Setup
 
-## Why
+### 1. Prepare the sheet
 
-Automated bank feeds can't split a mixed Costco cart, don't know a work-trip charge was reimbursed, and label things `ABC LIQUOR #42` instead of "Pregame materials." The judgment only exists in your head at the moment of purchase — so the fastest accurate system is a 10-second entry right then, not a review pass later.
-
-## Features
-
-- **Log tab** — amount, category chips, card chips, item, date (defaults to today)
-- **Three entry types** — Spend / Income / Invest, matching the sheet's tabs
-- **One-tap presets** — recurring entries (lunch, rent, utilities, insurance, paycheck, Roth) pre-fill the form
-- **History** — entries grouped by day, current-month totals, delete (local)
-- **Google Sheets sync** — entries push on save; failed syncs queue and retry via "Sync now" (amber dot = not yet synced)
-- **Export / Import JSON** — backup or move data between devices
-- **Dark mode** — follows system preference
-- **Installable** — add to home screen on iOS/Android for an app-like experience
-
-## Sheet setup
-
-The app appends rows to three tabs (rename in `appsscript.js` if yours differ):
+Your spreadsheet needs three tabs with these columns (row 1 = headers):
 
 | Tab | Columns |
 |---|---|
@@ -31,17 +16,41 @@ The app appends rows to three tabs (rename in `appsscript.js` if yours differ):
 | `Income` | Date, Source, Income |
 | `Invest` | Date, Account, Amount |
 
-Dates are written as `MM/DD/YYYY`.
+Different tab names? Edit `TABS` at the top of `appsscript.js`.
 
-### Deploy the Apps Script
+### 2. Deploy the Apps Script
 
-1. Open your budget spreadsheet → **Extensions → Apps Script**
-2. Paste the contents of [`appsscript.js`](appsscript.js), save
-3. **Deploy → New deployment → Web app** — Execute as: **Me**, Who has access: **Anyone**
-4. Copy the `/exec` URL into the app's **Settings** tab
+1. Open the spreadsheet → **Extensions → Apps Script**
+2. Delete any default code, paste in the contents of [`appsscript.js`](appsscript.js)
+3. Set `SECRET` at the top to a long random string (this is your password — save it in a password manager)
+4. **Deploy → New deployment → Web app**, with **Execute as: Me** and **Who has access: Anyone**
+5. Authorize when prompted, then copy the `/exec` URL
 
-The URL is stored in your browser's localStorage only — it is never committed to this repo.
+> Re-deploying after script changes: **Deploy → Manage deployments → edit → New version**. The URL stays the same.
+
+### 3. Configure the app
+
+1. Open the live app → **Settings**
+2. Paste the web app URL and the secret → **Save**
+3. Tap **Sync now** to test — then check the **Analysis** tab, which pulls your sheet history
+
+### 4. Install on your phone
+
+Open the app in Safari/Chrome → Share → **Add to Home Screen**.
+
+## How syncing works
+
+- Saving an entry stores it locally and pushes it to the sheet immediately. If the push fails (offline, etc.), the entry keeps an amber dot and retries on the next save or **Sync now**.
+- The Analysis tab reads the whole sheet (plus any unsynced local entries), so history you entered before using this app is included.
+- Deleting an entry in History is local-only — rows already written to the sheet are never touched. Fix mistakes in the sheet itself.
+- Dates are written as `MM/DD/YYYY`.
+
+## Security notes
+
+- The web app URL + secret together are the only key to your data. Don't share them, don't commit them — the app keeps both in your browser's `localStorage` only.
+- Read (`doGet`) and write (`doPost`) both require the secret.
+- The Apps Script runs as you and only touches the one spreadsheet it's bound to.
 
 ## Development
 
-No build step. Open `index.html` in a browser, or serve the folder with any static server. Deployed automatically via GitHub Pages from `main`.
+No build step. Open `index.html` in a browser or serve the folder with any static server. Pushing to `main` deploys via GitHub Pages.

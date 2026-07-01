@@ -7,8 +7,8 @@ const CATEGORIES = [
   'Car Insurance', 'Room Decor', 'Other Housing Payments', 'Other',
 ];
 
-const CARDS = ['Bilt', 'Discover', 'SoFi', 'Autograph'];
-const SOURCES = ['Paycheck', 'Payback', 'Poker', 'Tax Return'];
+const CARDS = ['Bilt', 'Discover', 'SoFi', 'Autograph', 'CSP'];
+const SOURCES = ['Paycheck'];
 const ACCOUNTS = ['Roth IRA'];
 
 const PRESETS = [
@@ -22,11 +22,13 @@ const PRESETS = [
 
 const STORE_ENTRIES = 'budget-log:entries';
 const STORE_SETTINGS = 'budget-log:settings';
+const STORE_SHEET = 'budget-log:sheetCache';
 
 // ---------- State ----------
 
 let entries = JSON.parse(localStorage.getItem(STORE_ENTRIES) || '[]');
 let settings = JSON.parse(localStorage.getItem(STORE_SETTINGS) || '{}');
+let sheetCache = JSON.parse(localStorage.getItem(STORE_SHEET) || 'null');
 let currentType = 'spend';
 let selectedCategory = null;
 let selectedCard = null;
@@ -38,6 +40,7 @@ const $$ = (sel) => document.querySelectorAll(sel);
 
 function saveEntries() { localStorage.setItem(STORE_ENTRIES, JSON.stringify(entries)); }
 function saveSettings() { localStorage.setItem(STORE_SETTINGS, JSON.stringify(settings)); }
+function saveSheetCache() { localStorage.setItem(STORE_SHEET, JSON.stringify(sheetCache)); }
 
 function todayISO() {
   const d = new Date();
@@ -50,8 +53,26 @@ function isoToSheet(iso) {
   return `${m}/${d}/${y}`;
 }
 
+// sheet format (MM/DD/YYYY) -> month key (YYYY-MM)
+function sheetToMonth(mdy) {
+  const [m, , y] = mdy.split('/');
+  return `${y}-${m.padStart(2, '0')}`;
+}
+
+function parseMoney(v) {
+  if (typeof v === 'number') return v;
+  const n = parseFloat(String(v).replace(/[$,]/g, ''));
+  return isNaN(n) ? 0 : n;
+}
+
 function fmtMoney(n) {
   return n.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
+}
+
+function monthLabel(key) {
+  const [y, m] = key.split('-');
+  const names = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  return `${names[parseInt(m, 10) - 1]} ${y.slice(2)}`;
 }
 
 function toast(msg) {
@@ -188,7 +209,6 @@ function renderHistory() {
 
   const sorted = [...entries].sort((a, b) => (a.date < b.date ? 1 : -1) || (a.savedAt < b.savedAt ? 1 : -1));
 
-  // Month summary (current month, local entries only)
   const monthPrefix = todayISO().slice(0, 7);
   const monthEntries = entries.filter((e) => e.date.startsWith(monthPrefix));
   const spent = monthEntries.filter((e) => e.type === 'spend').reduce((s, e) => s + e.price, 0);
@@ -232,7 +252,7 @@ function renderHistory() {
   updateSyncStatus();
 }
 
-// ---------- Sync ----------
+// ---------- Sync (write) ----------
 
 function unsyncedEntries() { return entries.filter((e) => !e.synced); }
 
@@ -243,7 +263,6 @@ function updateSyncStatus() {
     : 'No Apps Script URL configured — entries stay on this device.';
 }
 
-// Sheet-facing payload (dates converted to MM/DD/YYYY)
 function toSheetEntry(e) {
   const base = { id: e.id, type: e.type, date: isoToSheet(e.date) };
   if (e.type === 'spend') return { ...base, category: e.category, item: e.item, card: e.card, price: e.price };
@@ -260,7 +279,7 @@ async function syncUnsynced(quiet) {
     const res = await fetch(settings.scriptUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain' },
-      body: JSON.stringify({ entries: batch.map(toSheetEntry) }),
+      body: JSON.stringify({ secret: settings.secret || '', entries: batch.map(toSheetEntry) }),
     });
     const data = await res.json();
     if (!data.ok) throw new Error(data.error || 'sync failed');
@@ -268,10 +287,142 @@ async function syncUnsynced(quiet) {
     entries.forEach((e) => { if (savedIds.has(e.id)) e.synced = true; });
     saveEntries();
     if (!quiet) toast(`Synced ${data.saved.length} ✓`);
+    refreshSheetData(true); // keep analysis current
   } catch (err) {
     if (!quiet) toast('Sync failed — kept locally');
   }
   renderHistory();
+}
+
+// ---------- Sheet data (read) ----------
+
+async function refreshSheetData(quiet) {
+  if (!settings.scriptUrl) { if (!quiet) toast('Set the Apps Script URL first'); return; }
+  try {
+    const url = settings.scriptUrl + '?secret=' + encodeURIComponent(settings.secret || '');
+    const res = await fetch(url);
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || 'fetch failed');
+    sheetCache = {
+      fetchedAt: new Date().toISOString(),
+      spend: data.spend,
+      income: data.income,
+      invest: data.invest,
+    };
+    saveSheetCache();
+    if (!quiet) toast('Data refreshed ✓');
+  } catch (err) {
+    if (!quiet) toast('Refresh failed');
+  }
+  renderAnalysis();
+}
+
+/**
+ * Rows for analysis: everything from the sheet cache, plus local entries
+ * not yet synced (synced ones are already in the sheet).
+ * Normalized shape: { month, type, category, amount }
+ */
+function analysisRows() {
+  const rows = [];
+  if (sheetCache) {
+    sheetCache.spend.forEach(([date, category, , , price]) =>
+      rows.push({ month: sheetToMonth(date), type: 'spend', category, amount: parseMoney(price) }));
+    sheetCache.income.forEach(([date, , income]) =>
+      rows.push({ month: sheetToMonth(date), type: 'income', category: 'Income', amount: parseMoney(income) }));
+    sheetCache.invest.forEach(([date, , amount]) =>
+      rows.push({ month: sheetToMonth(date), type: 'invest', category: 'Invest', amount: parseMoney(amount) }));
+  }
+  unsyncedEntries().forEach((e) =>
+    rows.push({
+      month: e.date.slice(0, 7),
+      type: e.type,
+      category: e.type === 'spend' ? e.category : e.type === 'income' ? 'Income' : 'Invest',
+      amount: entryAmount(e),
+    }));
+  return rows;
+}
+
+// ---------- Analysis ----------
+
+function renderAnalysis() {
+  const rows = analysisRows();
+  const hasData = rows.length > 0;
+  $('#analysis-empty').classList.toggle('hidden', hasData);
+  $('#analysis-content').classList.toggle('hidden', !hasData);
+  if (!hasData) return;
+
+  // Monthly rollup
+  const months = {};
+  rows.forEach((r) => {
+    const m = (months[r.month] ||= { income: 0, spend: 0, invest: 0 });
+    m[r.type] += r.amount;
+  });
+  const keys = Object.keys(months).sort();
+
+  // Stat cards: current month
+  const nowKey = todayISO().slice(0, 7);
+  const cur = months[nowKey] || { income: 0, spend: 0, invest: 0 };
+  const saved = cur.income - cur.spend - cur.invest;
+  const rate = cur.income > 0 ? ((cur.income - cur.spend) / cur.income) * 100 : 0;
+  $('#stat-cards').innerHTML =
+    `<div class="stat-card"><span>Saved (${monthLabel(nowKey)})</span><strong class="${saved < 0 ? 'neg' : ''}">${fmtMoney(saved)}</strong></div>` +
+    `<div class="stat-card"><span>Savings rate</span><strong>${rate.toFixed(0)}%</strong></div>`;
+
+  // Trend chart: last 6 months
+  const last6 = keys.slice(-6);
+  const max = Math.max(...last6.flatMap((k) => [months[k].income, months[k].spend, months[k].invest]), 1);
+  const chart = $('#trend-chart');
+  chart.innerHTML = '';
+  last6.forEach((k) => {
+    const m = months[k];
+    const col = document.createElement('div');
+    col.className = 'trend-col';
+    col.innerHTML =
+      `<div class="bars">` +
+      `<div class="bar income-bar" style="height:${(m.income / max) * 100}%" title="Income ${fmtMoney(m.income)}"></div>` +
+      `<div class="bar spend-bar" style="height:${(m.spend / max) * 100}%" title="Spend ${fmtMoney(m.spend)}"></div>` +
+      `<div class="bar invest-bar" style="height:${(m.invest / max) * 100}%" title="Invest ${fmtMoney(m.invest)}"></div>` +
+      `</div><div class="trend-label">${monthLabel(k)}</div>`;
+    chart.appendChild(col);
+  });
+
+  // Month selector for category breakdown
+  const sel = $('#month-select');
+  const prev = sel.value;
+  sel.innerHTML = '';
+  [...keys].reverse().forEach((k) => {
+    const opt = document.createElement('option');
+    opt.value = k;
+    opt.textContent = monthLabel(k);
+    sel.appendChild(opt);
+  });
+  sel.value = keys.includes(prev) ? prev : (keys.includes(nowKey) ? nowKey : keys[keys.length - 1]);
+  renderBreakdown(rows, sel.value);
+
+  const fetched = sheetCache && sheetCache.fetchedAt;
+  $('#last-fetched').textContent = fetched
+    ? 'Sheet data from ' + new Date(fetched).toLocaleString()
+    : 'Local entries only — refresh to pull the sheet.';
+}
+
+function renderBreakdown(rows, monthKey) {
+  const spendRows = rows.filter((r) => r.type === 'spend' && r.month === monthKey);
+  const byCat = {};
+  spendRows.forEach((r) => (byCat[r.category] = (byCat[r.category] || 0) + r.amount));
+  const total = Object.values(byCat).reduce((a, b) => a + b, 0);
+  const sorted = Object.entries(byCat).sort((a, b) => b[1] - a[1]);
+
+  const el = $('#category-breakdown');
+  el.innerHTML = sorted.length ? '' : '<p class="hint">No spending logged this month.</p>';
+  sorted.forEach(([cat, amt]) => {
+    const pct = total > 0 ? (amt / total) * 100 : 0;
+    const row = document.createElement('div');
+    row.className = 'cat-row';
+    row.innerHTML =
+      `<div class="cat-head"><span>${cat}</span><span>${fmtMoney(amt)} · ${pct.toFixed(0)}%</span></div>` +
+      `<div class="cat-track"><div class="cat-fill" style="width:${pct}%"></div></div>`;
+    el.appendChild(row);
+  });
 }
 
 // ---------- Export / import ----------
@@ -310,6 +461,7 @@ function init() {
   renderPresets();
   renderAllChips();
   renderHistory();
+  renderAnalysis();
 
   $('#entry-form').addEventListener('submit', handleSubmit);
 
@@ -323,17 +475,22 @@ function init() {
       $$('.view').forEach((v) => v.classList.remove('active'));
       $(`#view-${b.dataset.view}`).classList.add('active');
       if (b.dataset.view === 'history') renderHistory();
+      if (b.dataset.view === 'analysis') renderAnalysis();
     })
   );
 
   $('#script-url').value = settings.scriptUrl || '';
-  $('#save-url').addEventListener('click', () => {
+  $('#script-secret').value = settings.secret || '';
+  $('#save-sync').addEventListener('click', () => {
     settings.scriptUrl = $('#script-url').value.trim();
+    settings.secret = $('#script-secret').value.trim();
     saveSettings();
     updateSyncStatus();
-    toast('URL saved');
+    toast('Sync settings saved');
   });
   $('#sync-now').addEventListener('click', () => syncUnsynced(false));
+  $('#refresh-data').addEventListener('click', () => refreshSheetData(false));
+  $('#month-select').addEventListener('change', (e) => renderBreakdown(analysisRows(), e.target.value));
 
   $('#export-json').addEventListener('click', exportJSON);
   $('#import-json').addEventListener('click', () => $('#import-file').click());
@@ -341,6 +498,9 @@ function init() {
     if (e.target.files[0]) importJSON(e.target.files[0]);
     e.target.value = '';
   });
+
+  // Pull fresh sheet data on load if sync is configured
+  if (settings.scriptUrl) refreshSheetData(true);
 }
 
 init();
