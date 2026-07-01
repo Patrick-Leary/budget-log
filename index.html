@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#10b981">
+  <title>Budget Log</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="stylesheet" href="styles/main.css">
+</head>
+<body>
+  <header>
+    <h1>💸 Budget Log</h1>
+  </header>
+
+  <main>
+    <!-- LOG TAB -->
+    <section id="view-log" class="view active">
+      <div class="segmented" id="type-toggle">
+        <button data-type="spend" class="active">Spend</button>
+        <button data-type="income">Income</button>
+        <button data-type="invest">Invest</button>
+      </div>
+
+      <div class="presets" id="presets"></div>
+
+      <form id="entry-form" autocomplete="off">
+        <div class="field">
+          <label for="amount">Amount</label>
+          <input type="number" id="amount" inputmode="decimal" step="0.01" min="0" placeholder="0.00" required>
+        </div>
+
+        <div class="field">
+          <label for="date">Date</label>
+          <input type="date" id="date" required>
+        </div>
+
+        <!-- Spend-only fields -->
+        <div class="field spend-only">
+          <label>Category</label>
+          <div class="chip-grid" id="category-chips"></div>
+        </div>
+        <div class="field spend-only">
+          <label for="item">Item</label>
+          <input type="text" id="item" placeholder="What was it?">
+        </div>
+        <div class="field spend-only">
+          <label>Card</label>
+          <div class="chip-row" id="card-chips"></div>
+        </div>
+
+        <!-- Income-only fields -->
+        <div class="field income-only hidden">
+          <label for="source">Source</label>
+          <input type="text" id="source" placeholder="Paycheck, payback...">
+          <div class="chip-row" id="source-chips"></div>
+        </div>
+
+        <!-- Invest-only fields -->
+        <div class="field invest-only hidden">
+          <label for="account">Account</label>
+          <input type="text" id="account" placeholder="Roth IRA">
+          <div class="chip-row" id="account-chips"></div>
+        </div>
+
+        <button type="submit" class="save-btn" id="save-btn">Save</button>
+      </form>
+    </section>
+
+    <!-- HISTORY TAB -->
+    <section id="view-history" class="view">
+      <div class="month-summary" id="month-summary"></div>
+      <div id="history-list"></div>
+    </section>
+
+    <!-- SETTINGS TAB -->
+    <section id="view-settings" class="view">
+      <div class="settings-block">
+        <h2>Google Sheets Sync</h2>
+        <p class="hint">Paste your Apps Script web app URL. Entries sync automatically on save; unsynced entries retry with "Sync now".</p>
+        <input type="url" id="script-url" placeholder="https://script.google.com/macros/s/.../exec">
+        <button id="save-url" class="secondary-btn">Save URL</button>
+        <div class="sync-status" id="sync-status"></div>
+        <button id="sync-now" class="secondary-btn">Sync now</button>
+      </div>
+      <div class="settings-block">
+        <h2>Data</h2>
+        <button id="export-json" class="secondary-btn">Export JSON</button>
+        <button id="import-json" class="secondary-btn">Import JSON</button>
+        <input type="file" id="import-file" accept=".json" hidden>
+      </div>
+    </section>
+  </main>
+
+  <nav class="tabbar">
+    <button data-view="log" class="active">➕ Log</button>
+    <button data-view="history">📋 History</button>
+    <button data-view="settings">⚙️ Settings</button>
+  </nav>
+
+  <div class="toast" id="toast"></div>
+
+  <script src="scripts/app.js"></script>
+</body>
+</html>
