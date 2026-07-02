@@ -312,7 +312,7 @@ async function refreshSheetData(quiet) {
     saveSheetCache();
     if (!quiet) toast('Data refreshed ✓');
   } catch (err) {
-    if (!quiet) toast('Refresh failed');
+    if (!quiet) toast('Refresh failed — ' + (err.message === 'unauthorized' ? 'wrong secret?' : 'check URL'));
   }
   renderAnalysis();
 }
@@ -486,7 +486,8 @@ function init() {
     settings.secret = $('#script-secret').value.trim();
     saveSettings();
     updateSyncStatus();
-    toast('Sync settings saved');
+    if (settings.scriptUrl) refreshSheetData(false); // doubles as a connection test
+    else toast('Sync settings saved');
   });
   $('#sync-now').addEventListener('click', () => syncUnsynced(false));
   $('#refresh-data').addEventListener('click', () => refreshSheetData(false));
