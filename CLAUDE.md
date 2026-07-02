@@ -15,6 +15,7 @@ Mobile-first static web app for quick budget entry, syncing to a Google Sheet vi
 - Categories/cards/presets are constants at the top of `scripts/app.js` — they mirror the owner's sheet categories; don't invent new ones without asking.
 - Mobile-first: test at ~390px width; tap targets ≥40px; safe-area insets handled in CSS.
 - Deleting an entry is local-only — the sheet is append-only from this app; keep it that way.
+- Saving an income entry whose source matches /paycheck/i auto-appends a paired "401k + match" income row and a "401k" invest row for `K401_PER_PAYCHECK` (pairing keeps Saved = income − spend − invest unchanged). The amount is a hardcoded constant — update it manually when pay changes.
 - Charts are hand-rolled divs/CSS — no chart libraries.
 - Dark mode via `prefers-color-scheme` and CSS custom properties in `:root`.
 - Scripts must never log or render the secret.

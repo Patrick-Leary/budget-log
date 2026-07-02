@@ -9,7 +9,11 @@ const CATEGORIES = [
 
 const CARDS = ['Bilt', 'Discover', 'SoFi', 'Autograph', 'CSP'];
 const SOURCES = ['Paycheck'];
-const ACCOUNTS = ['Roth IRA'];
+const ACCOUNTS = ['Roth IRA', '401k'];
+
+// Per-paycheck 401k flow (5% employee + 4% employer match, pre-tax).
+// Fixed dollar amount by design — update by hand after a raise.
+const K401_PER_PAYCHECK = 276.93;
 
 const PRESETS = [
   { label: '🍱 RV Lunch $6', type: 'spend', category: 'RV Food', item: 'RV Lunch', card: 'Bilt', amount: 6 },
@@ -175,9 +179,21 @@ function handleSubmit(e) {
   }
 
   entries.push(entry);
+
+  // A paycheck implies a 401k contribution that never appears in net pay.
+  // Log it as a PAIRED income + invest row so Saved (income − spend − invest)
+  // is unchanged while Income and Invested reflect the pre-tax money.
+  const isPaycheck = entry.type === 'income' && /paycheck/i.test(entry.source);
+  if (isPaycheck) {
+    const mkId = () => Date.now() + '-' + Math.random().toString(36).slice(2, 7);
+    const savedAt = new Date().toISOString();
+    entries.push({ id: mkId(), type: 'income', date, savedAt, synced: false, source: '401k + match', income: K401_PER_PAYCHECK });
+    entries.push({ id: mkId(), type: 'invest', date, savedAt, synced: false, account: '401k', amount: K401_PER_PAYCHECK });
+  }
+
   saveEntries();
   resetForm();
-  toast('Saved ✓');
+  toast(isPaycheck ? 'Saved + 401k rows ✓ (3 entries)' : 'Saved ✓');
   renderHistory();
   syncUnsynced(true); // fire-and-forget
 }
